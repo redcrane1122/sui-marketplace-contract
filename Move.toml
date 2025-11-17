@@ -1,6 +1,7 @@
 [package]
 name = "trixxy_marketplace"
 version = "1.0.0"
+edition = "2024"
 
 [addresses]
 trixxy = "0x0"

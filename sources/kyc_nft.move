@@ -3,10 +3,10 @@
 /// Each user can mint one KYC NFT with their basic information
 
 module trixxy::kyc_nft {
-    use sui::object::{Self, UID};
+    use sui::object::{Self, UID, ID};
     use sui::tx_context::{Self, TxContext};
     use sui::transfer;
-    use sui::url::{Self, Url};
+    use std::vector;
 
     /// KYC NFT struct containing user verification information
     struct KYC_NFT has key, store {
@@ -26,7 +26,6 @@ module trixxy::kyc_nft {
     }
 
     /// Error codes
-    const E_ALREADY_HAS_KYC: u64 = 0;
     const E_INVALID_NAME: u64 = 1;
     const E_INVALID_EMAIL: u64 = 2;
 
@@ -40,8 +39,8 @@ module trixxy::kyc_nft {
         ctx: &mut TxContext
     ) {
         // Basic validation
-        assert!(name.len() > 0, E_INVALID_NAME);
-        assert!(email.len() > 0, E_INVALID_EMAIL);
+        assert!(vector::length(&name) > 0, E_INVALID_NAME);
+        assert!(vector::length(&email) > 0, E_INVALID_EMAIL);
 
         let sender = tx_context::sender(ctx);
         let timestamp = tx_context::epoch_timestamp_ms(ctx);
@@ -64,8 +63,8 @@ module trixxy::kyc_nft {
         sui::event::emit(KYC_NFT_Minted {
             owner: sender,
             nft_id,
-            name: *&nft.name,
-            email: *&nft.email,
+            name,
+            email,
         });
     }
 

@@ -10,16 +10,12 @@ module trixxy::art_marketplace {
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
     use std::option::{Self, Option};
+    use std::vector;
 
     /// Media type enum
-    const MEDIA_TYPE_MUSIC: u8 = 0;
-    const MEDIA_TYPE_PICTURE: u8 = 1;
-    const MEDIA_TYPE_VIDEO: u8 = 2;
-    const MEDIA_TYPE_PDF: u8 = 3;
     const MEDIA_TYPE_OTHER: u8 = 4;
 
     /// Purchase type enum
-    const PURCHASE_TYPE_FREE: u8 = 0;
     const PURCHASE_TYPE_PREMIUM: u8 = 1;
 
     /// Art NFT struct containing art metadata and media reference
@@ -79,7 +75,7 @@ module trixxy::art_marketplace {
         ctx: &mut TxContext
     ) {
         // Validation
-        assert!(title.len() > 0, E_INVALID_TITLE);
+        assert!(vector::length(&title) > 0, E_INVALID_TITLE);
         assert!(media_type <= MEDIA_TYPE_OTHER, E_INVALID_MEDIA_TYPE);
         assert!(purchase_type <= PURCHASE_TYPE_PREMIUM, E_INVALID_PURCHASE_TYPE);
         
@@ -92,7 +88,7 @@ module trixxy::art_marketplace {
         let timestamp = tx_context::epoch_timestamp_ms(ctx);
 
         // Convert thumbnail_blob_id to Option
-        let thumbnail_option = if (thumbnail_blob_id.len() == 0) {
+        let thumbnail_option = if (vector::length(&thumbnail_blob_id) == 0) {
             option::none()
         } else {
             option::some(thumbnail_blob_id)
@@ -155,10 +151,20 @@ module trixxy::art_marketplace {
         assert!(payment_amount >= price, E_INVALID_PRICE);
 
         // In a full implementation, transfer payment to artist
-        // For now, we just burn the payment (or transfer to treasury)
+        // For now, we just transfer the payment to treasury
         let treasury = @0x0; // Replace with actual treasury address
-        let payment_to_send = coin::extract(&mut payment, price, ctx);
-        transfer::public_transfer(payment_to_send, treasury);
+        
+        // If payment is exactly the price, transfer the whole coin
+        // Otherwise, split and transfer both parts
+        if (payment_amount == price) {
+            transfer::public_transfer(payment, treasury);
+        } else {
+            // Split the required amount from payment
+            let payment_to_send = coin::split(&mut payment, price, ctx);
+            transfer::public_transfer(payment_to_send, treasury);
+            // Return remaining payment to sender
+            transfer::public_transfer(payment, buyer);
+        };
 
         // Emit purchase event
         sui::event::emit(Art_Purchased {

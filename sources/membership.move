@@ -63,12 +63,20 @@ module trixxy::membership {
         let payment_amount = coin::value(&payment);
         assert!(payment_amount >= required_price, E_INSUFFICIENT_PAYMENT);
 
-        // Extract payment
-        let payment_to_send = coin::extract(&mut payment, required_price, ctx);
-        
         // Transfer to treasury (replace with actual treasury address)
         let treasury = @0x0;
-        transfer::public_transfer(payment_to_send, treasury);
+        
+        // If payment is exactly the required price, transfer the whole coin
+        // Otherwise, split and transfer both parts
+        if (payment_amount == required_price) {
+            transfer::public_transfer(payment, treasury);
+        } else {
+            // Split the required amount from payment
+            let payment_to_send = coin::split(&mut payment, required_price, ctx);
+            transfer::public_transfer(payment_to_send, treasury);
+            // Return remaining payment to sender
+            transfer::public_transfer(payment, owner);
+        };
 
         // Create membership NFT (lifetime membership, no expiration)
         let membership = MembershipNFT {
@@ -116,12 +124,20 @@ module trixxy::membership {
         let payment_amount = coin::value(&payment);
         assert!(payment_amount >= required_price, E_INSUFFICIENT_PAYMENT);
 
-        // Extract payment
-        let payment_to_send = coin::extract(&mut payment, required_price, ctx);
-        
         // Transfer to treasury
         let treasury = @0x0;
-        transfer::public_transfer(payment_to_send, treasury);
+        
+        // If payment is exactly the required price, transfer the whole coin
+        // Otherwise, split and transfer both parts
+        if (payment_amount == required_price) {
+            transfer::public_transfer(payment, treasury);
+        } else {
+            // Split the required amount from payment
+            let payment_to_send = coin::split(&mut payment, required_price, ctx);
+            transfer::public_transfer(payment_to_send, treasury);
+            // Return remaining payment to sender
+            transfer::public_transfer(payment, owner);
+        };
 
         // Calculate expiration
         let expires_at = timestamp + duration_ms;
