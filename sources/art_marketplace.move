@@ -4,13 +4,9 @@
 /// Supports free and premium (paid) content
 
 module trixxy::art_marketplace {
-    use sui::object::{UID, ID};
-    use sui::tx_context;
-    use sui::transfer;
+    // UID, ID, tx_context, transfer, option, and vector are auto-imported in Move 2024
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
-    use std::option;
-    use std::vector;
 
     /// Media type enum
     const MEDIA_TYPE_OTHER: u8 = 4;
@@ -63,6 +59,7 @@ module trixxy::art_marketplace {
     /// Note: purchase_type should be: 0=free, 1=premium
     /// Note: thumbnail_blob_id can be empty vector for None
     /// Note: price should be 0 for free content, actual price in MIST for premium
+    #[allow(lint(public_entry))]
     public entry fun create_art(
         title: vector<u8>,
         description: vector<u8>,
@@ -138,6 +135,7 @@ module trixxy::art_marketplace {
     /// Purchase premium art (if not free)
     /// This function handles the purchase of premium content
     /// Note: In a full implementation, this would transfer SUI to the artist
+    #[allow(lint(public_entry))]
     public entry fun purchase_art(
         art: &mut ArtNFT,
         mut payment: Coin<SUI>,

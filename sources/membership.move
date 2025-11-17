@@ -3,12 +3,9 @@
 /// Users can purchase membership to access all premium content
 
 module trixxy::membership {
-    use sui::object::{UID, ID};
-    use sui::tx_context;
-    use sui::transfer;
+    // UID, ID, tx_context, transfer, and option are auto-imported in Move 2024
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
-    use std::option;
 
     /// Membership tier types
     const MEMBERSHIP_TIER_STANDARD: u8 = 0;
@@ -42,6 +39,7 @@ module trixxy::membership {
     /// This function creates a membership NFT after payment
     /// tier: 0 = standard, 1 = pro
     /// Note: Frontend should pass tier as u8 (0 or 1)
+    #[allow(lint(public_entry))]
     public entry fun purchase_membership(
         tier: u8,
         mut payment: Coin<SUI>,
@@ -102,6 +100,7 @@ module trixxy::membership {
 
     /// Purchase a time-limited membership NFT
     /// This function creates a membership NFT with expiration
+    #[allow(lint(public_entry))]
     public entry fun purchase_timed_membership(
         tier: u8,
         duration_ms: u64,  // Duration in milliseconds

@@ -3,10 +3,7 @@
 /// Each user can mint one KYC NFT with their basic information
 
 module trixxy::kyc_nft {
-    use sui::object::{UID, ID};
-    use sui::tx_context;
-    use sui::transfer;
-    use std::vector;
+    // UID, ID, tx_context, transfer, and vector are auto-imported in Move 2024
 
     /// KYC NFT struct containing user verification information
     public struct KYC_NFT has key, store {
@@ -32,6 +29,7 @@ module trixxy::kyc_nft {
     /// Mint a new KYC NFT for the caller
     /// This function creates a KYC verification NFT with user's basic information
     /// The extended profile data is stored in Walrus and referenced by walrus_id
+    #[allow(lint(public_entry))]
     public entry fun mint_kyc_nft(
         name: vector<u8>,
         email: vector<u8>,
