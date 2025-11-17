@@ -4,12 +4,12 @@
 /// Supports free and premium (paid) content
 
 module trixxy::art_marketplace {
-    use sui::object::{Self, UID, ID};
-    use sui::tx_context::{Self, TxContext};
+    use sui::object::{UID, ID};
+    use sui::tx_context;
     use sui::transfer;
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
-    use std::option::{Self, Option};
+    use std::option;
     use std::vector;
 
     /// Media type enum
@@ -19,7 +19,7 @@ module trixxy::art_marketplace {
     const PURCHASE_TYPE_PREMIUM: u8 = 1;
 
     /// Art NFT struct containing art metadata and media reference
-    struct ArtNFT has key, store {
+    public struct ArtNFT has key, store {
         id: UID,
         title: vector<u8>,
         description: vector<u8>,
@@ -27,15 +27,15 @@ module trixxy::art_marketplace {
         media_type: u8,               // 0=music, 1=picture, 2=video, 3=pdf, 4=other
         purchase_type: u8,            // 0=free, 1=premium
         walrus_blob_id: vector<u8>,   // Walrus storage blob ID for media file
-        thumbnail_blob_id: Option<vector<u8>>, // Optional thumbnail for videos/pictures
-        price: Option<u64>,            // Price in SUI (if premium, in MIST)
+        thumbnail_blob_id: option::Option<vector<u8>>, // Optional thumbnail for videos/pictures
+        price: option::Option<u64>,            // Price in SUI (if premium, in MIST)
         tags: vector<vector<u8>>,     // Tags for categorization
         created_at: u64,              // Timestamp when NFT was created
         views: u64,                   // View count for popularity
     }
 
     /// Event emitted when an Art NFT is created
-    struct ArtNFT_Created has copy, drop {
+    public struct ArtNFT_Created has copy, drop {
         art_id: ID,
         artist: address,
         title: vector<u8>,
@@ -44,7 +44,7 @@ module trixxy::art_marketplace {
     }
 
     /// Event emitted when premium art is purchased
-    struct Art_Purchased has copy, drop {
+    public struct Art_Purchased has copy, drop {
         art_id: ID,
         buyer: address,
         price: u64,
@@ -87,9 +87,12 @@ module trixxy::art_marketplace {
         let artist = tx_context::sender(ctx);
         let timestamp = tx_context::epoch_timestamp_ms(ctx);
 
+        // Save title for event before creating art
+        let title_for_event = title;
+
         // Convert thumbnail_blob_id to Option
         let thumbnail_option = if (vector::length(&thumbnail_blob_id) == 0) {
-            option::none()
+            option::none<vector<u8>>()
         } else {
             option::some(thumbnail_blob_id)
         };
@@ -98,12 +101,12 @@ module trixxy::art_marketplace {
         let price_option = if (purchase_type == PURCHASE_TYPE_PREMIUM && price > 0) {
             option::some(price)
         } else {
-            option::none()
+            option::none<u64>()
         };
 
         // Create the Art NFT
         let art = ArtNFT {
-            id: object::new(ctx),
+            id: sui::object::new(ctx),
             title,
             description,
             artist,
@@ -117,7 +120,7 @@ module trixxy::art_marketplace {
             views: 0,
         };
 
-        let art_id = object::id(&art);
+        let art_id = sui::object::id(&art);
         
         // Transfer to the creator
         transfer::transfer(art, artist);
@@ -126,7 +129,7 @@ module trixxy::art_marketplace {
         sui::event::emit(ArtNFT_Created {
             art_id,
             artist,
-            title: *&art.title,
+            title: title_for_event,
             media_type,
             purchase_type,
         });
@@ -137,7 +140,7 @@ module trixxy::art_marketplace {
     /// Note: In a full implementation, this would transfer SUI to the artist
     public entry fun purchase_art(
         art: &mut ArtNFT,
-        payment: Coin<SUI>,
+        mut payment: Coin<SUI>,
         ctx: &mut TxContext
     ) {
         assert!(art.purchase_type == PURCHASE_TYPE_PREMIUM, E_INVALID_PURCHASE_TYPE);
@@ -168,7 +171,7 @@ module trixxy::art_marketplace {
 
         // Emit purchase event
         sui::event::emit(Art_Purchased {
-            art_id: object::id(art),
+            art_id: sui::object::id(art),
             buyer,
             price,
         });

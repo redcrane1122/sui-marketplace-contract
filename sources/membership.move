@@ -3,28 +3,28 @@
 /// Users can purchase membership to access all premium content
 
 module trixxy::membership {
-    use sui::object::{Self, UID, ID};
-    use sui::tx_context::{Self, TxContext};
+    use sui::object::{UID, ID};
+    use sui::tx_context;
     use sui::transfer;
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
-    use std::option::{Self, Option};
+    use std::option;
 
     /// Membership tier types
     const MEMBERSHIP_TIER_STANDARD: u8 = 0;
     const MEMBERSHIP_TIER_PRO: u8 = 1;
 
     /// Membership NFT struct
-    struct MembershipNFT has key, store {
+    public struct MembershipNFT has key, store {
         id: UID,
         owner: address,
         tier: u8,                    // 0=standard, 1=pro
         purchased_at: u64,           // Timestamp when membership was purchased
-        expires_at: Option<u64>,     // Optional expiration timestamp (None = lifetime)
+        expires_at: option::Option<u64>,     // Optional expiration timestamp (None = lifetime)
     }
 
     /// Event emitted when membership is purchased
-    struct Membership_Purchased has copy, drop {
+    public struct Membership_Purchased has copy, drop {
         owner: address,
         membership_id: ID,
         tier: u8,
@@ -44,7 +44,7 @@ module trixxy::membership {
     /// Note: Frontend should pass tier as u8 (0 or 1)
     public entry fun purchase_membership(
         tier: u8,
-        payment: Coin<SUI>,
+        mut payment: Coin<SUI>,
         ctx: &mut TxContext
     ) {
         assert!(tier <= MEMBERSHIP_TIER_PRO, E_INVALID_TIER);
@@ -80,14 +80,14 @@ module trixxy::membership {
 
         // Create membership NFT (lifetime membership, no expiration)
         let membership = MembershipNFT {
-            id: object::new(ctx),
+            id: sui::object::new(ctx),
             owner,
             tier,
             purchased_at: timestamp,
-            expires_at: option::none(),
+            expires_at: option::none<u64>(),
         };
 
-        let membership_id = object::id(&membership);
+        let membership_id = sui::object::id(&membership);
         
         // Transfer to owner
         transfer::transfer(membership, owner);
@@ -105,7 +105,7 @@ module trixxy::membership {
     public entry fun purchase_timed_membership(
         tier: u8,
         duration_ms: u64,  // Duration in milliseconds
-        payment: Coin<SUI>,
+        mut payment: Coin<SUI>,
         ctx: &mut TxContext
     ) {
         assert!(tier <= MEMBERSHIP_TIER_PRO, E_INVALID_TIER);
@@ -144,14 +144,14 @@ module trixxy::membership {
 
         // Create membership NFT with expiration
         let membership = MembershipNFT {
-            id: object::new(ctx),
+            id: sui::object::new(ctx),
             owner,
             tier,
             purchased_at: timestamp,
             expires_at: option::some(expires_at),
         };
 
-        let membership_id = object::id(&membership);
+        let membership_id = sui::object::id(&membership);
         
         // Transfer to owner
         transfer::transfer(membership, owner);

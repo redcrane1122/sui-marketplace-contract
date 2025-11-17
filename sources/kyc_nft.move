@@ -3,13 +3,13 @@
 /// Each user can mint one KYC NFT with their basic information
 
 module trixxy::kyc_nft {
-    use sui::object::{Self, UID, ID};
-    use sui::tx_context::{Self, TxContext};
+    use sui::object::{UID, ID};
+    use sui::tx_context;
     use sui::transfer;
     use std::vector;
 
     /// KYC NFT struct containing user verification information
-    struct KYC_NFT has key, store {
+    public struct KYC_NFT has key, store {
         id: UID,
         name: vector<u8>,        // User's full name
         email: vector<u8>,       // User's email address
@@ -18,7 +18,7 @@ module trixxy::kyc_nft {
     }
 
     /// Event emitted when a KYC NFT is minted
-    struct KYC_NFT_Minted has copy, drop {
+    public struct KYC_NFT_Minted has copy, drop {
         owner: address,
         nft_id: ID,
         name: vector<u8>,
@@ -47,14 +47,14 @@ module trixxy::kyc_nft {
 
         // Create the KYC NFT
         let nft = KYC_NFT {
-            id: object::new(ctx),
+            id: sui::object::new(ctx),
             name,
             email,
             walrus_id,
             created_at: timestamp,
         };
 
-        let nft_id = object::id(&nft);
+        let nft_id = sui::object::id(&nft);
         
         // Transfer to the sender
         transfer::transfer(nft, sender);
