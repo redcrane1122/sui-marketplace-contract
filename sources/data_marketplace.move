@@ -392,25 +392,15 @@ module trixxy::data_marketplace {
         let balance_value = balance::value(&dataset.producer_reward_pool);
         assert!(balance_value >= amount, E_INSUFFICIENT_PAYMENT);
 
-        // Move balance out (this is allowed - field becomes uninitialized)
-        let pool = dataset.producer_reward_pool;
-        
-        // Convert balance to coin
-        let mut total_coin = coin::from_balance(pool, ctx);
-        
-        // Split to get reward amount
-        let reward_coin = coin::split(&mut total_coin, amount, ctx);
-        
-        // Convert remainder back to balance
-        let remainder_balance = coin::into_balance(total_coin);
-        
-        // Move remainder back into field (reinitializing the field)
-        dataset.producer_reward_pool = remainder_balance;
+        // Withdraw from balance using mutable reference (no need to move field)
+        // balance::withdraw takes &mut Balance, amount, and ctx
+        let reward_coin = balance::withdraw(&mut dataset.producer_reward_pool, amount, ctx);
         
         transfer::public_transfer(reward_coin, producer);
     }
 
     /// Internal function to distribute revenue
+    #[allow(lint(self_transfer))]
     fun distribute_revenue(
         dataset: &mut DatasetNFT,
         price: u64,
