@@ -1,0 +1,467 @@
+/// Data Marketplace Module
+/// This module handles creation, ownership, pricing, and exchange of datasets
+/// Features:
+/// - Provable ownership via Sui object model
+/// - Flexible pricing (fixed, subscription, per-access)
+/// - Exchange functionality with revenue sharing
+/// - Incentives for producers and consumers
+
+module trixxy::data_marketplace {
+    use sui::coin::{Self, Coin};
+    use sui::sui::SUI;
+    use sui::balance::{Self, Balance};
+    use sui::event;
+
+    /// Pricing model types
+    const PRICING_FIXED: u8 = 0;           // One-time purchase
+    const PRICING_SUBSCRIPTION: u8 = 1;    // Recurring subscription
+    const PRICING_PER_ACCESS: u8 = 2;      // Pay per access
+    const PRICING_FREE: u8 = 3;            // Free access
+
+    /// Dataset category types
+    const CATEGORY_OTHER: u8 = 7;
+
+    /// Data Access Token - represents purchased access to a dataset
+    public struct DataAccessToken has key, store {
+        id: UID,
+        dataset_id: ID,
+        owner: address,
+        purchased_at: u64,
+        expires_at: Option<u64>,  // None for lifetime access
+        access_count: u64,
+        max_accesses: Option<u64>, // None for unlimited
+    }
+
+    /// Dataset NFT - represents ownership and metadata of a dataset
+    public struct DatasetNFT has key, store {
+        id: UID,
+        title: vector<u8>,
+        description: vector<u8>,
+        producer: address,              // Original creator/owner
+        category: u8,                   // 0=financial, 1=healthcare, 2=research, 3=iot, 4=social, 5=geospatial, 6=media, 7=other
+        pricing_model: u8,              // 0=fixed, 1=subscription, 2=per-access, 3=free
+        price: Option<u64>,             // Price in MIST (if applicable)
+        subscription_duration_ms: Option<u64>, // For subscription model
+        walrus_blob_id: vector<u8>,     // Walrus storage blob ID for dataset
+        metadata_blob_id: Option<vector<u8>>, // Optional metadata/schema file
+        schema_hash: vector<u8>,        // Hash of data schema for verification
+        data_hash: vector<u8>,          // Hash of dataset for integrity verification
+        tags: vector<vector<u8>>,
+        created_at: u64,
+        updated_at: u64,
+        total_sales: u64,               // Number of purchases
+        total_revenue: u64,             // Total revenue in MIST
+        views: u64,                     // View count
+        is_active: bool,                // Whether dataset is available for purchase
+        royalty_percentage: u8,         // Royalty percentage (0-100) for resales
+        producer_reward_pool: Balance<SUI>, // Pool for producer incentives
+    }
+
+    /// Marketplace state - tracks global marketplace statistics
+    public struct MarketplaceState has key {
+        id: UID,
+        total_datasets: u64,
+        total_sales: u64,
+        total_revenue: u64,
+        platform_fee_percentage: u8,    // Platform fee (0-100)
+        treasury: Balance<SUI>,
+    }
+
+    /// Events
+    public struct Dataset_Created has copy, drop {
+        dataset_id: ID,
+        producer: address,
+        title: vector<u8>,
+        category: u8,
+        pricing_model: u8,
+    }
+
+    public struct Dataset_Purchased has copy, drop {
+        dataset_id: ID,
+        buyer: address,
+        access_token_id: ID,
+        price: u64,
+        pricing_model: u8,
+    }
+
+    public struct Dataset_Updated has copy, drop {
+        dataset_id: ID,
+        producer: address,
+    }
+
+    public struct Access_Used has copy, drop {
+        dataset_id: ID,
+        access_token_id: ID,
+        user: address,
+    }
+
+    public struct Revenue_Distributed has copy, drop {
+        dataset_id: ID,
+        producer: address,
+        producer_amount: u64,
+        platform_amount: u64,
+    }
+
+    /// Error codes
+    const E_INVALID_TITLE: u64 = 0;
+    const E_INVALID_CATEGORY: u64 = 1;
+    const E_INVALID_PRICING_MODEL: u64 = 2;
+    const E_INVALID_PRICE: u64 = 3;
+    const E_DATASET_NOT_ACTIVE: u64 = 4;
+    const E_INSUFFICIENT_PAYMENT: u64 = 5;
+    const E_ACCESS_EXPIRED: u64 = 6;
+    const E_ACCESS_LIMIT_REACHED: u64 = 7;
+    const E_NOT_PRODUCER: u64 = 8;
+    const E_INVALID_ROYALTY: u64 = 9;
+    const E_MARKETPLACE_NOT_INITIALIZED: u64 = 10;
+
+    /// Initialize marketplace (one-time setup)
+    #[allow(lint(public_entry))]
+    public entry fun initialize_marketplace(
+        ctx: &mut TxContext
+    ) {
+        let state = MarketplaceState {
+            id: sui::object::new(ctx),
+            total_datasets: 0,
+            total_sales: 0,
+            total_revenue: 0,
+            platform_fee_percentage: 5, // 5% platform fee
+            treasury: balance::zero(),
+        };
+        
+        // Transfer to a shared object or keep as owned
+        transfer::share_object(state);
+    }
+
+    /// Create a new dataset
+    #[allow(lint(public_entry))]
+    public entry fun create_dataset(
+        title: vector<u8>,
+        description: vector<u8>,
+        category: u8,
+        pricing_model: u8,
+        walrus_blob_id: vector<u8>,
+        metadata_blob_id: vector<u8>,  // Empty vector means None
+        schema_hash: vector<u8>,
+        data_hash: vector<u8>,
+        price: u64,                     // 0 means None for free content
+        subscription_duration_ms: u64,  // 0 means None
+        tags: vector<vector<u8>>,
+        royalty_percentage: u8,
+        ctx: &mut TxContext
+    ) {
+        // Validation
+        assert!(vector::length(&title) > 0, E_INVALID_TITLE);
+        assert!(category <= CATEGORY_OTHER, E_INVALID_CATEGORY);
+        assert!(pricing_model <= PRICING_FREE, E_INVALID_PRICING_MODEL);
+        assert!(royalty_percentage <= 100, E_INVALID_ROYALTY);
+        
+        // Premium content must have a price
+        if (pricing_model != PRICING_FREE) {
+            assert!(price > 0, E_INVALID_PRICE);
+        };
+
+        let producer = tx_context::sender(ctx);
+        let timestamp = tx_context::epoch_timestamp_ms(ctx);
+
+        // Convert metadata_blob_id to Option
+        let metadata_option = if (vector::length(&metadata_blob_id) == 0) {
+            option::none<vector<u8>>()
+        } else {
+            option::some(metadata_blob_id)
+        };
+
+        // Convert price to Option
+        let price_option = if (pricing_model != PRICING_FREE && price > 0) {
+            option::some(price)
+        } else {
+            option::none<u64>()
+        };
+
+        // Convert subscription_duration_ms to Option
+        let subscription_option = if (pricing_model == PRICING_SUBSCRIPTION && subscription_duration_ms > 0) {
+            option::some(subscription_duration_ms)
+        } else {
+            option::none<u64>()
+        };
+
+        // Save title for event before creating dataset
+        let title_for_event = title;
+
+        // Create the Dataset NFT
+        let dataset = DatasetNFT {
+            id: sui::object::new(ctx),
+            title,
+            description,
+            producer,
+            category,
+            pricing_model,
+            price: price_option,
+            subscription_duration_ms: subscription_option,
+            walrus_blob_id,
+            metadata_blob_id: metadata_option,
+            schema_hash,
+            data_hash,
+            tags,
+            created_at: timestamp,
+            updated_at: timestamp,
+            total_sales: 0,
+            total_revenue: 0,
+            views: 0,
+            is_active: true,
+            royalty_percentage,
+            producer_reward_pool: balance::zero(),
+        };
+
+        let dataset_id = sui::object::id(&dataset);
+        
+        // Transfer to the producer
+        transfer::transfer(dataset, producer);
+
+        // Emit event
+        event::emit(Dataset_Created {
+            dataset_id,
+            producer,
+            title: title_for_event,
+            category,
+            pricing_model,
+        });
+    }
+
+    /// Purchase access to a dataset
+    #[allow(lint(public_entry))]
+    public entry fun purchase_dataset(
+        dataset: &mut DatasetNFT,
+        mut payment: Coin<SUI>,
+        ctx: &mut TxContext
+    ) {
+        assert!(dataset.is_active, E_DATASET_NOT_ACTIVE);
+        assert!(dataset.pricing_model != PRICING_FREE, E_INVALID_PRICING_MODEL);
+        assert!(option::is_some(&dataset.price), E_INVALID_PRICE);
+        
+        let price = *option::borrow(&dataset.price);
+        let buyer = tx_context::sender(ctx);
+        let timestamp = tx_context::epoch_timestamp_ms(ctx);
+        
+        // Verify payment amount
+        let payment_amount = coin::value(&payment);
+        assert!(payment_amount >= price, E_INSUFFICIENT_PAYMENT);
+
+        // Calculate expiration time for subscription model
+        let expires_at = if (dataset.pricing_model == PRICING_SUBSCRIPTION) {
+            let duration = *option::borrow(&dataset.subscription_duration_ms);
+            option::some(timestamp + duration)
+        } else {
+            option::none<u64>() // Lifetime access for fixed price
+        };
+
+        // Calculate max accesses for per-access model
+        let max_accesses = if (dataset.pricing_model == PRICING_PER_ACCESS) {
+            option::some(1) // Single access per purchase
+        } else {
+            option::none<u64>() // Unlimited for other models
+        };
+
+        // Create access token
+        let access_token = DataAccessToken {
+            id: sui::object::new(ctx),
+            dataset_id: sui::object::id(dataset),
+            owner: buyer,
+            purchased_at: timestamp,
+            expires_at,
+            access_count: 0,
+            max_accesses,
+        };
+
+        let access_token_id = sui::object::id(&access_token);
+
+        // Distribute revenue
+        let (producer_amount, platform_amount) = distribute_revenue(
+            dataset,
+            price,
+            payment_amount,
+            &mut payment,
+            ctx
+        );
+
+        // Update dataset statistics
+        dataset.total_sales = dataset.total_sales + 1;
+        dataset.total_revenue = dataset.total_revenue + price;
+        dataset.updated_at = timestamp;
+
+        // Transfer access token to buyer
+        transfer::transfer(access_token, buyer);
+
+        // Emit events
+        event::emit(Dataset_Purchased {
+            dataset_id: sui::object::id(dataset),
+            buyer,
+            access_token_id,
+            price,
+            pricing_model: dataset.pricing_model,
+        });
+
+        event::emit(Revenue_Distributed {
+            dataset_id: sui::object::id(dataset),
+            producer: dataset.producer,
+            producer_amount,
+            platform_amount,
+        });
+    }
+
+    /// Use dataset access (increment access count)
+    #[allow(lint(public_entry))]
+    public entry fun use_dataset_access(
+        dataset: &mut DatasetNFT,
+        access_token: &mut DataAccessToken,
+        ctx: &mut TxContext
+    ) {
+        let user = tx_context::sender(ctx);
+        assert!(access_token.dataset_id == sui::object::id(dataset), E_INVALID_PRICING_MODEL);
+        assert!(access_token.owner == user, E_NOT_PRODUCER);
+
+        // Check expiration
+        if (option::is_some(&access_token.expires_at)) {
+            let expiry = *option::borrow(&access_token.expires_at);
+            let now = tx_context::epoch_timestamp_ms(ctx);
+            assert!(now < expiry, E_ACCESS_EXPIRED);
+        };
+
+        // Check access limit
+        if (option::is_some(&access_token.max_accesses)) {
+            let max = *option::borrow(&access_token.max_accesses);
+            assert!(access_token.access_count < max, E_ACCESS_LIMIT_REACHED);
+        };
+
+        // Increment access count
+        access_token.access_count = access_token.access_count + 1;
+        dataset.views = dataset.views + 1;
+
+        // Emit event
+        event::emit(Access_Used {
+            dataset_id: sui::object::id(dataset),
+            access_token_id: sui::object::id(access_token),
+            user,
+        });
+    }
+
+    /// Update dataset (only by producer)
+    #[allow(lint(public_entry))]
+    public entry fun update_dataset(
+        dataset: &mut DatasetNFT,
+        new_title: vector<u8>,
+        new_description: vector<u8>,
+        new_price: u64,  // 0 means keep current
+        new_is_active: bool,
+        ctx: &mut TxContext
+    ) {
+        let producer = tx_context::sender(ctx);
+        assert!(dataset.producer == producer, E_NOT_PRODUCER);
+
+        if (vector::length(&new_title) > 0) {
+            dataset.title = new_title;
+        };
+        if (vector::length(&new_description) > 0) {
+            dataset.description = new_description;
+        };
+        if (new_price > 0 && option::is_some(&dataset.price)) {
+            dataset.price = option::some(new_price);
+        };
+        dataset.is_active = new_is_active;
+        dataset.updated_at = tx_context::epoch_timestamp_ms(ctx);
+
+        event::emit(Dataset_Updated {
+            dataset_id: sui::object::id(dataset),
+            producer,
+        });
+    }
+
+    /// Withdraw producer rewards
+    #[allow(lint(public_entry))]
+    public entry fun withdraw_producer_rewards(
+        dataset: &mut DatasetNFT,
+        amount: u64,
+        ctx: &mut TxContext
+    ) {
+        let producer = tx_context::sender(ctx);
+        assert!(dataset.producer == producer, E_NOT_PRODUCER);
+        
+        let balance_value = balance::value(&dataset.producer_reward_pool);
+        assert!(balance_value >= amount, E_INSUFFICIENT_PAYMENT);
+
+        let reward_coin = coin::from_balance(&mut dataset.producer_reward_pool, amount, ctx);
+        transfer::public_transfer(reward_coin, producer);
+    }
+
+    /// Internal function to distribute revenue
+    fun distribute_revenue(
+        dataset: &mut DatasetNFT,
+        price: u64,
+        payment_amount: u64,
+        payment: &mut Coin<SUI>,
+        ctx: &mut TxContext
+    ): (u64, u64) {
+        // Platform fee (default 5%, can be configured)
+        let platform_fee_percentage = 5;
+        let platform_fee = (price * (platform_fee_percentage as u64)) / 100;
+        let producer_amount = price - platform_fee;
+
+        // Split payment
+        if (payment_amount == price) {
+            // Split the coin
+            let platform_coin = coin::split(payment, platform_fee, ctx);
+            let producer_coin = coin::split(payment, producer_amount, ctx);
+            
+            // Transfer platform fee to treasury (simplified - using @0x0)
+            transfer::public_transfer(platform_coin, @0x0);
+            
+            // Add to producer reward pool
+            let producer_balance = coin::into_balance(producer_coin);
+            balance::join(&mut dataset.producer_reward_pool, producer_balance);
+        } else {
+            // Payment is more than price
+            let platform_coin = coin::split(payment, platform_fee, ctx);
+            let producer_coin = coin::split(payment, producer_amount, ctx);
+            let refund_amount = payment_amount - price;
+            let refund = coin::split(payment, refund_amount, ctx);
+            
+            // Transfer platform fee
+            transfer::public_transfer(platform_coin, @0x0);
+            
+            // Add to producer reward pool
+            let producer_balance = coin::into_balance(producer_coin);
+            balance::join(&mut dataset.producer_reward_pool, producer_balance);
+            
+            // Return refund
+            transfer::public_transfer(refund, tx_context::sender(ctx));
+        };
+
+        (producer_amount, platform_fee)
+    }
+
+    /// Getter functions
+    public fun get_producer(dataset: &DatasetNFT): address {
+        dataset.producer
+    }
+
+    public fun get_price(dataset: &DatasetNFT): Option<u64> {
+        dataset.price
+    }
+
+    public fun get_total_sales(dataset: &DatasetNFT): u64 {
+        dataset.total_sales
+    }
+
+    public fun get_total_revenue(dataset: &DatasetNFT): u64 {
+        dataset.total_revenue
+    }
+
+    public fun get_views(dataset: &DatasetNFT): u64 {
+        dataset.views
+    }
+
+    public fun get_reward_pool_balance(dataset: &DatasetNFT): u64 {
+        balance::value(&dataset.producer_reward_pool)
+    }
+}
+
