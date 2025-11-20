@@ -380,7 +380,7 @@ module trixxy::data_marketplace {
 
 
     /// Withdraw producer rewards
-    #[allow(lint(public_entry))]
+    #[allow(lint(public_entry), lint(custom_state_change))]
     public entry fun withdraw_producer_rewards(
         dataset: DatasetNFT,
         amount: u64,
@@ -392,8 +392,30 @@ module trixxy::data_marketplace {
         let balance_value = balance::value(&dataset.producer_reward_pool);
         assert!(balance_value >= amount, E_INSUFFICIENT_PAYMENT);
 
-        // Move balance field out (field becomes uninitialized)
-        let pool = dataset.producer_reward_pool;
+        // Destructure the struct to access the balance field
+        let DatasetNFT {
+            id,
+            title,
+            description,
+            producer: _,
+            category,
+            pricing_model,
+            price,
+            subscription_duration_ms,
+            walrus_blob_id,
+            metadata_blob_id,
+            schema_hash,
+            data_hash,
+            tags,
+            created_at,
+            updated_at,
+            total_sales,
+            total_revenue,
+            views,
+            is_active,
+            royalty_percentage,
+            producer_reward_pool: pool,
+        } = dataset;
         
         // Convert balance to coin
         let mut total_coin = coin::from_balance(pool, ctx);
@@ -404,14 +426,36 @@ module trixxy::data_marketplace {
         // Convert remainder back to balance
         let remainder_balance = coin::into_balance(total_coin);
         
-        // Reassign the field - this works when dataset is owned (not a reference)
-        dataset.producer_reward_pool = remainder_balance;
+        // Reconstruct the struct with the updated balance
+        let updated_dataset = DatasetNFT {
+            id,
+            title,
+            description,
+            producer,
+            category,
+            pricing_model,
+            price,
+            subscription_duration_ms,
+            walrus_blob_id,
+            metadata_blob_id,
+            schema_hash,
+            data_hash,
+            tags,
+            created_at,
+            updated_at,
+            total_sales,
+            total_revenue,
+            views,
+            is_active,
+            royalty_percentage,
+            producer_reward_pool: remainder_balance,
+        };
         
         // Transfer the reward coin to producer
         transfer::public_transfer(reward_coin, producer);
         
-        // Transfer the dataset back to the producer (it's now owned)
-        transfer::transfer(dataset, producer);
+        // Transfer the updated dataset back to the producer
+        transfer::transfer(updated_dataset, producer);
     }
 
     /// Internal function to distribute revenue
