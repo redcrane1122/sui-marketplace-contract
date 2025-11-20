@@ -11,8 +11,6 @@ module trixxy::data_marketplace {
     use sui::sui::SUI;
     use sui::balance::{Self, Balance};
     use sui::event;
-    use sui::object::{Self, UID};
-    use sui::transfer;
 
     /// Pricing model types
     #[allow(unused_const)]
