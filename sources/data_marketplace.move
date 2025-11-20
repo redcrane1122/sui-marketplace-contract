@@ -392,25 +392,20 @@ module trixxy::data_marketplace {
         let balance_value = balance::value(&dataset.producer_reward_pool);
         assert!(balance_value >= amount, E_INSUFFICIENT_PAYMENT);
 
-        // We need to work around Move's limitations with Balance fields
-        // Strategy: Convert entire balance to coin, split, then use balance::join to add remainder back
-        // But we can't move the field out and reassign. Instead, we'll need to restructure.
-        // For now, let's use a workaround: create a new zero balance and join the remainder
-        
-        // Move balance out (field becomes uninitialized - this is allowed in Move)
+        // Move balance out (this is allowed - field becomes uninitialized)
         let pool = dataset.producer_reward_pool;
+        
+        // Convert balance to coin
         let mut total_coin = coin::from_balance(pool, ctx);
         
-        // Split to get reward
+        // Split to get reward amount
         let reward_coin = coin::split(&mut total_coin, amount, ctx);
         
         // Convert remainder back to balance
         let remainder_balance = coin::into_balance(total_coin);
         
-        // Initialize field with zero balance, then join remainder
-        // This avoids the drop requirement
-        dataset.producer_reward_pool = balance::zero();
-        balance::join(&mut dataset.producer_reward_pool, remainder_balance);
+        // Move remainder back into field (reinitializing the field)
+        dataset.producer_reward_pool = remainder_balance;
         
         transfer::public_transfer(reward_coin, producer);
     }
@@ -449,7 +444,7 @@ module trixxy::data_marketplace {
             let platform_coin = coin::split(&mut payment, platform_fee, ctx);
             let producer_coin = coin::split(&mut payment, producer_amount, ctx);
             let refund_amount = payment_amount - price;
-            let refund = coin::split(&mut payment, refund_amount, ctx);
+            let refund_coin = coin::split(&mut payment, refund_amount, ctx);
             
             // Transfer platform fee
             transfer::public_transfer(platform_coin, @0x0);
@@ -459,8 +454,7 @@ module trixxy::data_marketplace {
             balance::join(&mut dataset.producer_reward_pool, producer_balance);
             
             // Return refund
-            #[allow(lint(self_transfer))]
-            transfer::public_transfer(refund, tx_context::sender(ctx));
+            transfer::public_transfer(refund_coin, tx_context::sender(ctx));
             
             // Consume remaining payment (should be zero, join to producer pool)
             let remaining_balance = coin::into_balance(payment);
