@@ -234,7 +234,7 @@ module trixxy::data_marketplace {
     #[allow(lint(public_entry))]
     public entry fun purchase_dataset(
         dataset: &mut DatasetNFT,
-        mut payment: Coin<SUI>,
+        payment: Coin<SUI>,
         ctx: &mut TxContext
     ) {
         assert!(dataset.is_active, E_DATASET_NOT_ACTIVE);
@@ -277,7 +277,7 @@ module trixxy::data_marketplace {
 
         let access_token_id = sui::object::id(&access_token);
 
-        // Distribute revenue
+        // Distribute revenue (payment is consumed in this function)
         let (producer_amount, platform_amount) = distribute_revenue(
             dataset,
             price,
@@ -378,17 +378,6 @@ module trixxy::data_marketplace {
         });
     }
 
-    /// Internal helper to withdraw from balance
-    fun withdraw_from_balance(
-        pool: Balance<SUI>,
-        amount: u64,
-        ctx: &mut TxContext
-    ): (Coin<SUI>, Balance<SUI>) {
-        let mut total_coin = coin::from_balance(pool, ctx);
-        let reward_coin = coin::split(&mut total_coin, amount, ctx);
-        let remainder_balance = coin::into_balance(total_coin);
-        (reward_coin, remainder_balance)
-    }
 
     /// Withdraw producer rewards
     #[allow(lint(public_entry))]
@@ -403,9 +392,15 @@ module trixxy::data_marketplace {
         let balance_value = balance::value(&dataset.producer_reward_pool);
         assert!(balance_value >= amount, E_INSUFFICIENT_PAYMENT);
 
-        // Extract balance, process it, then reassign
-        let pool = dataset.producer_reward_pool;
-        let (reward_coin, remainder_balance) = withdraw_from_balance(pool, amount, ctx);
+        // Move balance out of field (field becomes uninitialized)
+        let pool_balance = dataset.producer_reward_pool;
+        
+        // Convert to coin and split
+        let mut total_coin = coin::from_balance(pool_balance, ctx);
+        let reward_coin = coin::split(&mut total_coin, amount, ctx);
+        let remainder_balance = coin::into_balance(total_coin);
+        
+        // Reassign to field (required after moving it out)
         dataset.producer_reward_pool = remainder_balance;
         
         transfer::public_transfer(reward_coin, producer);
@@ -437,8 +432,9 @@ module trixxy::data_marketplace {
             let producer_balance = coin::into_balance(producer_coin);
             balance::join(&mut dataset.producer_reward_pool, producer_balance);
             
-            // Consume remaining payment (should be zero, but need to handle it)
-            let _ = coin::into_balance(payment);
+            // Consume remaining payment (should be zero, join to producer pool)
+            let remaining_balance = coin::into_balance(payment);
+            balance::join(&mut dataset.producer_reward_pool, remaining_balance);
         } else {
             // Payment is more than price
             let platform_coin = coin::split(&mut payment, platform_fee, ctx);
@@ -456,8 +452,9 @@ module trixxy::data_marketplace {
             // Return refund
             transfer::public_transfer(refund, tx_context::sender(ctx));
             
-            // Consume remaining payment (should be zero, but need to handle it)
-            let _ = coin::into_balance(payment);
+            // Consume remaining payment (should be zero, join to producer pool)
+            let remaining_balance = coin::into_balance(payment);
+            balance::join(&mut dataset.producer_reward_pool, remaining_balance);
         };
 
         (producer_amount, platform_fee)
