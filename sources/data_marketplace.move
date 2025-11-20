@@ -382,7 +382,7 @@ module trixxy::data_marketplace {
     /// Withdraw producer rewards
     #[allow(lint(public_entry))]
     public entry fun withdraw_producer_rewards(
-        dataset: &mut DatasetNFT,
+        dataset: DatasetNFT,
         amount: u64,
         ctx: &mut TxContext
     ) {
@@ -392,11 +392,26 @@ module trixxy::data_marketplace {
         let balance_value = balance::value(&dataset.producer_reward_pool);
         assert!(balance_value >= amount, E_INSUFFICIENT_PAYMENT);
 
-        // Withdraw from balance using mutable reference (no need to move field)
-        // balance::withdraw takes &mut Balance, amount, and ctx
-        let reward_coin = balance::withdraw(&mut dataset.producer_reward_pool, amount, ctx);
+        // Move balance field out (field becomes uninitialized)
+        let pool = dataset.producer_reward_pool;
         
+        // Convert balance to coin
+        let mut total_coin = coin::from_balance(pool, ctx);
+        
+        // Split to get reward amount
+        let reward_coin = coin::split(&mut total_coin, amount, ctx);
+        
+        // Convert remainder back to balance
+        let remainder_balance = coin::into_balance(total_coin);
+        
+        // Reassign the field - this works when dataset is owned (not a reference)
+        dataset.producer_reward_pool = remainder_balance;
+        
+        // Transfer the reward coin to producer
         transfer::public_transfer(reward_coin, producer);
+        
+        // Transfer the dataset back to the producer (it's now owned)
+        transfer::transfer(dataset, producer);
     }
 
     /// Internal function to distribute revenue
