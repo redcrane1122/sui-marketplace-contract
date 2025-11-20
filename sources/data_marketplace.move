@@ -378,6 +378,18 @@ module trixxy::data_marketplace {
         });
     }
 
+    /// Internal helper to withdraw from balance
+    fun withdraw_from_balance(
+        pool: Balance<SUI>,
+        amount: u64,
+        ctx: &mut TxContext
+    ): (Coin<SUI>, Balance<SUI>) {
+        let mut total_coin = coin::from_balance(pool, ctx);
+        let reward_coin = coin::split(&mut total_coin, amount, ctx);
+        let remainder_balance = coin::into_balance(total_coin);
+        (reward_coin, remainder_balance)
+    }
+
     /// Withdraw producer rewards
     #[allow(lint(public_entry))]
     public entry fun withdraw_producer_rewards(
@@ -391,12 +403,10 @@ module trixxy::data_marketplace {
         let balance_value = balance::value(&dataset.producer_reward_pool);
         assert!(balance_value >= amount, E_INSUFFICIENT_PAYMENT);
 
-        // Convert entire balance to coin, split to get desired amount, then put remainder back
-        let total_coin = coin::from_balance(dataset.producer_reward_pool, ctx);
-        let (reward_coin, remainder_coin) = coin::split(total_coin, amount, ctx);
+        // Use helper to withdraw from balance
+        let (reward_coin, remainder_balance) = withdraw_from_balance(dataset.producer_reward_pool, amount, ctx);
         
-        // Put remainder back as balance
-        let remainder_balance = coin::into_balance(remainder_coin);
+        // Reassign the balance back to the field
         dataset.producer_reward_pool = remainder_balance;
         
         transfer::public_transfer(reward_coin, producer);
