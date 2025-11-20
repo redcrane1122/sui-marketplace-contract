@@ -13,6 +13,7 @@ module trixxy::data_marketplace {
     use sui::event;
 
     /// Pricing model types
+    #[allow(unused_const)]
     const PRICING_FIXED: u8 = 0;           // One-time purchase
     const PRICING_SUBSCRIPTION: u8 = 1;    // Recurring subscription
     const PRICING_PER_ACCESS: u8 = 2;      // Pay per access
@@ -113,6 +114,7 @@ module trixxy::data_marketplace {
     const E_ACCESS_LIMIT_REACHED: u64 = 7;
     const E_NOT_PRODUCER: u64 = 8;
     const E_INVALID_ROYALTY: u64 = 9;
+    #[allow(unused_const)]
     const E_MARKETPLACE_NOT_INITIALIZED: u64 = 10;
 
     /// Initialize marketplace (one-time setup)
@@ -389,7 +391,8 @@ module trixxy::data_marketplace {
         let balance_value = balance::value(&dataset.producer_reward_pool);
         assert!(balance_value >= amount, E_INSUFFICIENT_PAYMENT);
 
-        let reward_coin = coin::from_balance(&mut dataset.producer_reward_pool, amount, ctx);
+        let reward_balance = balance::withdraw(&mut dataset.producer_reward_pool, amount);
+        let reward_coin = coin::from_balance(reward_balance, ctx);
         transfer::public_transfer(reward_coin, producer);
     }
 

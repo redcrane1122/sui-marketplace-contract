@@ -113,9 +113,11 @@ module trixxy::nautilus {
 
     /// Error codes
     const E_INVALID_HASH: u64 = 0;
+    #[allow(unused_const)]
     const E_INVALID_STATUS: u64 = 1;
     const E_MARKET_CLOSED: u64 = 2;
     const E_INVALID_OUTCOME: u64 = 3;
+    #[allow(unused_const)]
     const E_INSUFFICIENT_STAKE: u64 = 4;
     const E_ALREADY_RESOLVED: u64 = 5;
 
@@ -123,7 +125,7 @@ module trixxy::nautilus {
     #[allow(lint(public_entry))]
     public entry fun create_provenance_record(
         media_id: vector<u8>,
-        creator: address,
+        _creator: address,
         hash: vector<u8>,
         original_source: vector<u8>,
         creation_method: vector<u8>,
@@ -210,7 +212,8 @@ module trixxy::nautilus {
         if (age_days > 30) {
             trust_score = trust_score + 20;
         } else {
-            trust_score = trust_score + (age_days * 20 / 30) as u8;
+            let age_bonus = (age_days * 20) / 30;
+            trust_score = trust_score + (age_bonus as u8);
         };
 
         // Creator reputation (assume verified = 30 points)
@@ -419,7 +422,6 @@ module trixxy::nautilus {
         market.status = 1; // Resolved
         market.resolved_outcome = option::some(winning_outcome);
 
-        let winning_stake = *vector::borrow(&market.outcome_stakes, (winning_outcome as u64));
         let total_payout = market.total_staked; // All stakes go to winners (proportional)
 
         event::emit(Market_Resolved {

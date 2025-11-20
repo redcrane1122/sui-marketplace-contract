@@ -111,6 +111,7 @@ module trixxy::privacy {
     const E_UNAUTHORIZED: u64 = 0;
     const E_INVALID_COMPLIANCE_MODE: u64 = 1;
     const E_INVALID_RISK_SCORE: u64 = 2;
+    #[allow(unused_const)]
     const E_PROOF_VERIFICATION_FAILED: u64 = 3;
 
     /// Create or update privacy settings
