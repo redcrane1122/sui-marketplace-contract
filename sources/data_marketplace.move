@@ -391,8 +391,14 @@ module trixxy::data_marketplace {
         let balance_value = balance::value(&dataset.producer_reward_pool);
         assert!(balance_value >= amount, E_INSUFFICIENT_PAYMENT);
 
-        let reward_balance = balance::withdraw(&mut dataset.producer_reward_pool, amount);
-        let reward_coin = coin::from_balance(reward_balance, ctx);
+        // Convert entire balance to coin, split to get desired amount, then put remainder back
+        let total_coin = coin::from_balance(dataset.producer_reward_pool, ctx);
+        let (reward_coin, remainder_coin) = coin::split(total_coin, amount, ctx);
+        
+        // Put remainder back as balance
+        let remainder_balance = coin::into_balance(remainder_coin);
+        dataset.producer_reward_pool = remainder_balance;
+        
         transfer::public_transfer(reward_coin, producer);
     }
 
