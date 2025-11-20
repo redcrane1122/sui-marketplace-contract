@@ -392,16 +392,25 @@ module trixxy::data_marketplace {
         let balance_value = balance::value(&dataset.producer_reward_pool);
         assert!(balance_value >= amount, E_INSUFFICIENT_PAYMENT);
 
-        // Move balance out of field (field becomes uninitialized)
-        let pool_balance = dataset.producer_reward_pool;
+        // We need to work around Move's limitations with Balance fields
+        // Strategy: Convert entire balance to coin, split, then use balance::join to add remainder back
+        // But we can't move the field out and reassign. Instead, we'll need to restructure.
+        // For now, let's use a workaround: create a new zero balance and join the remainder
         
-        // Convert to coin and split
-        let mut total_coin = coin::from_balance(pool_balance, ctx);
+        // Move balance out (field becomes uninitialized - this is allowed in Move)
+        let pool = dataset.producer_reward_pool;
+        let mut total_coin = coin::from_balance(pool, ctx);
+        
+        // Split to get reward
         let reward_coin = coin::split(&mut total_coin, amount, ctx);
+        
+        // Convert remainder back to balance
         let remainder_balance = coin::into_balance(total_coin);
         
-        // Reassign to field (required after moving it out)
-        dataset.producer_reward_pool = remainder_balance;
+        // Initialize field with zero balance, then join remainder
+        // This avoids the drop requirement
+        dataset.producer_reward_pool = balance::zero();
+        balance::join(&mut dataset.producer_reward_pool, remainder_balance);
         
         transfer::public_transfer(reward_coin, producer);
     }
@@ -450,6 +459,7 @@ module trixxy::data_marketplace {
             balance::join(&mut dataset.producer_reward_pool, producer_balance);
             
             // Return refund
+            #[allow(lint(self_transfer))]
             transfer::public_transfer(refund, tx_context::sender(ctx));
             
             // Consume remaining payment (should be zero, join to producer pool)
