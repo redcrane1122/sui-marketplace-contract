@@ -282,7 +282,7 @@ module trixxy::data_marketplace {
             dataset,
             price,
             payment_amount,
-            &mut payment,
+            payment,
             ctx
         );
 
@@ -403,10 +403,9 @@ module trixxy::data_marketplace {
         let balance_value = balance::value(&dataset.producer_reward_pool);
         assert!(balance_value >= amount, E_INSUFFICIENT_PAYMENT);
 
-        // Use helper to withdraw from balance
-        let (reward_coin, remainder_balance) = withdraw_from_balance(dataset.producer_reward_pool, amount, ctx);
-        
-        // Reassign the balance back to the field
+        // Extract balance, process it, then reassign
+        let pool = dataset.producer_reward_pool;
+        let (reward_coin, remainder_balance) = withdraw_from_balance(pool, amount, ctx);
         dataset.producer_reward_pool = remainder_balance;
         
         transfer::public_transfer(reward_coin, producer);
@@ -417,7 +416,7 @@ module trixxy::data_marketplace {
         dataset: &mut DatasetNFT,
         price: u64,
         payment_amount: u64,
-        payment: &mut Coin<SUI>,
+        mut payment: Coin<SUI>,
         ctx: &mut TxContext
     ): (u64, u64) {
         // Platform fee (default 5%, can be configured)
@@ -428,8 +427,8 @@ module trixxy::data_marketplace {
         // Split payment
         if (payment_amount == price) {
             // Split the coin
-            let platform_coin = coin::split(payment, platform_fee, ctx);
-            let producer_coin = coin::split(payment, producer_amount, ctx);
+            let platform_coin = coin::split(&mut payment, platform_fee, ctx);
+            let producer_coin = coin::split(&mut payment, producer_amount, ctx);
             
             // Transfer platform fee to treasury (simplified - using @0x0)
             transfer::public_transfer(platform_coin, @0x0);
@@ -437,12 +436,15 @@ module trixxy::data_marketplace {
             // Add to producer reward pool
             let producer_balance = coin::into_balance(producer_coin);
             balance::join(&mut dataset.producer_reward_pool, producer_balance);
+            
+            // Consume remaining payment (should be zero, but need to handle it)
+            let _ = coin::into_balance(payment);
         } else {
             // Payment is more than price
-            let platform_coin = coin::split(payment, platform_fee, ctx);
-            let producer_coin = coin::split(payment, producer_amount, ctx);
+            let platform_coin = coin::split(&mut payment, platform_fee, ctx);
+            let producer_coin = coin::split(&mut payment, producer_amount, ctx);
             let refund_amount = payment_amount - price;
-            let refund = coin::split(payment, refund_amount, ctx);
+            let refund = coin::split(&mut payment, refund_amount, ctx);
             
             // Transfer platform fee
             transfer::public_transfer(platform_coin, @0x0);
@@ -453,6 +455,9 @@ module trixxy::data_marketplace {
             
             // Return refund
             transfer::public_transfer(refund, tx_context::sender(ctx));
+            
+            // Consume remaining payment (should be zero, but need to handle it)
+            let _ = coin::into_balance(payment);
         };
 
         (producer_amount, platform_fee)

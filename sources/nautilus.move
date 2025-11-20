@@ -175,7 +175,7 @@ module trixxy::nautilus {
         let timestamp = tx_context::epoch_timestamp_ms(ctx);
 
         // Verify hash matches
-        let hash_matches = vector::length(&record.hash) == vector::length(&provided_hash);
+        let mut hash_matches = vector::length(&record.hash) == vector::length(&provided_hash);
         if (hash_matches) {
             let mut i = 0;
             while (i < vector::length(&record.hash)) {
@@ -366,7 +366,7 @@ module trixxy::nautilus {
     public entry fun stake_on_market(
         market: &mut PredictionMarket,
         outcome_index: u8,
-        mut payment: Coin<SUI>,
+        payment: Coin<SUI>,
         ctx: &mut TxContext
     ) {
         assert!(market.status == 0, E_MARKET_CLOSED); // Must be active
