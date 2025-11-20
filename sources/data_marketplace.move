@@ -11,6 +11,8 @@ module trixxy::data_marketplace {
     use sui::sui::SUI;
     use sui::balance::{Self, Balance};
     use sui::event;
+    use sui::object::{Self, UID};
+    use sui::transfer;
 
     /// Pricing model types
     #[allow(unused_const)]
@@ -392,7 +394,7 @@ module trixxy::data_marketplace {
         let balance_value = balance::value(&dataset.producer_reward_pool);
         assert!(balance_value >= amount, E_INSUFFICIENT_PAYMENT);
 
-        // Destructure the struct to access the balance field
+        // Destructure the struct to access all fields including the balance
         let DatasetNFT {
             id,
             title,
@@ -417,6 +419,9 @@ module trixxy::data_marketplace {
             producer_reward_pool: pool,
         } = dataset;
         
+        // Delete the old object (this consumes the UID)
+        object::delete(id);
+        
         // Convert balance to coin
         let mut total_coin = coin::from_balance(pool, ctx);
         
@@ -426,9 +431,9 @@ module trixxy::data_marketplace {
         // Convert remainder back to balance
         let remainder_balance = coin::into_balance(total_coin);
         
-        // Reconstruct the struct with the updated balance
+        // Create new object with updated balance
         let updated_dataset = DatasetNFT {
-            id,
+            id: object::new(ctx),
             title,
             description,
             producer,
