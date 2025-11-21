@@ -120,6 +120,9 @@ module trixxy::nautilus {
     #[allow(unused_const)]
     const E_INSUFFICIENT_STAKE: u64 = 4;
     const E_ALREADY_RESOLVED: u64 = 5;
+    const E_INVALID_PAYMENT: u64 = 6;
+    const E_MARKET_NOT_ACTIVE: u64 = 7;
+    const E_MARKET_EXPIRED: u64 = 8;
 
     /// Create provenance record
     #[allow(lint(public_entry))]
@@ -371,14 +374,22 @@ module trixxy::nautilus {
         payment: Coin<SUI>,
         ctx: &mut TxContext
     ) {
-        assert!(market.status == 0, E_MARKET_CLOSED); // Must be active
+        // Validate market is active
+        assert!(market.status == 0, E_MARKET_NOT_ACTIVE); // Must be active
+        
+        // Validate outcome index
         assert!(outcome_index < (vector::length(&market.outcomes) as u8), E_INVALID_OUTCOME);
 
+        // Validate market hasn't expired
+        // Note: end_time must be in milliseconds (same unit as epoch_timestamp_ms)
+        // Markets created with end_time in seconds will fail this check
         let timestamp = tx_context::epoch_timestamp_ms(ctx);
-        assert!(timestamp < market.end_time, E_MARKET_CLOSED);
+        assert!(timestamp < market.end_time, E_MARKET_EXPIRED);
 
+        // Validate payment amount
         let staker = tx_context::sender(ctx);
         let stake_amount = coin::value(&payment);
+        assert!(stake_amount > 0, E_INVALID_PAYMENT);
 
         // Update market stakes
         let outcome_stake = *vector::borrow_mut(&mut market.outcome_stakes, (outcome_index as u64));
