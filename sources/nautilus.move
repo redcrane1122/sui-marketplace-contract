@@ -351,7 +351,8 @@ module trixxy::nautilus {
         };
 
         let market_id = sui::object::id(&market);
-        transfer::transfer(market, sender);
+        // Share the market so anyone can stake on it
+        transfer::share_object(market);
 
         event::emit(Prediction_Market_Created {
             market_id,
@@ -362,7 +363,7 @@ module trixxy::nautilus {
     }
 
     /// Stake on prediction market outcome
-    #[allow(lint(public_entry))]
+    // Note: Market must be shared for this to work with multiple users
     public entry fun stake_on_market(
         market: &mut PredictionMarket,
         outcome_index: u8,
@@ -407,7 +408,7 @@ module trixxy::nautilus {
     }
 
     /// Resolve prediction market
-    #[allow(lint(public_entry))]
+    // Note: Market must be shared for this to work
     public entry fun resolve_market(
         market: &mut PredictionMarket,
         winning_outcome: u8,
