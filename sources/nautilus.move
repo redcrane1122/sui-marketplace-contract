@@ -362,7 +362,7 @@ module trixxy::nautilus {
         });
     }
 
-    /// Stake on prediction market outcome
+    // Stake on prediction market outcome
     // Note: Market must be shared for this to work with multiple users
     #[allow(lint(public_entry))]
     public entry fun stake_on_market(
@@ -408,7 +408,7 @@ module trixxy::nautilus {
         });
     }
 
-    /// Resolve prediction market
+    // Resolve prediction market
     // Note: Market must be shared for this to work
     #[allow(lint(public_entry))]
     public entry fun resolve_market(
