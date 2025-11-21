@@ -217,8 +217,8 @@ module trixxy::data_marketplace {
 
         let dataset_id = sui::object::id(&dataset);
         
-        // Transfer to the producer
-        transfer::transfer(dataset, producer);
+        // Share the dataset so anyone can purchase it
+        transfer::share_object(dataset);
 
         // Emit event
         event::emit(Dataset_Created {

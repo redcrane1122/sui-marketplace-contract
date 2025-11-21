@@ -119,8 +119,8 @@ module trixxy::art_marketplace {
 
         let art_id = sui::object::id(&art);
         
-        // Transfer to the creator
-        transfer::transfer(art, artist);
+        // Share the art so anyone can purchase it
+        transfer::share_object(art);
 
         // Emit event
         sui::event::emit(ArtNFT_Created {
