@@ -259,7 +259,7 @@ module trixxy::data_marketplace {
     #[allow(lint(public_entry))]
     public entry fun purchase_dataset(
         dataset: &mut DatasetNFT,
-        mut payment: Coin<SUI>,
+        payment: Coin<SUI>,
         ctx: &mut TxContext
     ) {
         assert!(dataset.is_active, E_DATASET_NOT_ACTIVE);
