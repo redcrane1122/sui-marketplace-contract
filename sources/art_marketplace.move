@@ -151,18 +151,17 @@ module trixxy::art_marketplace {
         let payment_amount = coin::value(&payment);
         assert!(payment_amount >= price, E_INVALID_PRICE);
 
-        // In a full implementation, transfer payment to artist
-        // For now, we just transfer the payment to treasury
-        let treasury = @0x0; // Replace with actual treasury address
+        // Transfer payment to artist
+        let artist = art.artist;
         
         // If payment is exactly the price, transfer the whole coin
         // Otherwise, split and transfer both parts
         if (payment_amount == price) {
-            transfer::public_transfer(payment, treasury);
+            transfer::public_transfer(payment, artist);
         } else {
             // Split the required amount from payment
             let payment_to_send = coin::split(&mut payment, price, ctx);
-            transfer::public_transfer(payment_to_send, treasury);
+            transfer::public_transfer(payment_to_send, artist);
             // Return remaining payment to sender
             transfer::public_transfer(payment, buyer);
         };
