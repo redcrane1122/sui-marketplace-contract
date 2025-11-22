@@ -231,7 +231,7 @@ module trixxy::data_marketplace {
     }
 
     /// Purchase access to a dataset
-    #[allow(lint(public_entry))]
+    #[allow(lint(public_entry), lint(unused_let_mut))]
     public entry fun purchase_dataset(
         dataset: &mut DatasetNFT,
         mut payment: Coin<SUI>,
