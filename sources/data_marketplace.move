@@ -118,6 +118,13 @@ module trixxy::data_marketplace {
         amount: u64,
     }
 
+    public struct Dataset_Unstaked has copy, drop {
+        dataset_id: ID,
+        staker: address,
+        amount: u64,
+        reward: u64,
+    }
+
     /// Error codes
     const E_INVALID_TITLE: u64 = 0;
     const E_INVALID_CATEGORY: u64 = 1;
@@ -132,6 +139,8 @@ module trixxy::data_marketplace {
     #[allow(unused_const)]
     const E_MARKETPLACE_NOT_INITIALIZED: u64 = 10;
     const E_INVALID_PAYMENT: u64 = 11;
+    const E_NOT_STAKER: u64 = 12;
+    const E_INSUFFICIENT_REWARDS: u64 = 13;
 
     /// Initialize marketplace (one-time setup)
     #[allow(lint(public_entry))]
@@ -595,5 +604,56 @@ module trixxy::data_marketplace {
             amount: stake_amount,
         });
     }
-}
+
+    /// Unstake and withdraw rewards
+    /// Returns the original stake amount plus proportional rewards from the pool
+    #[allow(lint(public_entry))]
+    public entry fun unstake_dataset(
+        dataset: &mut DatasetNFT,
+        stake: DatasetStake,
+        ctx: &mut TxContext
+    ) {
+        assert!(dataset.is_active, E_DATASET_NOT_ACTIVE);
+        
+        let staker = tx_context::sender(ctx);
+        assert!(stake.staker == staker, E_NOT_STAKER);
+        
+        let stake_amount = stake.amount;
+        let pool_balance = balance::value(&dataset.producer_reward_pool);
+        
+        // Calculate proportional reward (simple: stake_amount / total_staked gets proportional share)
+        // For simplicity, we'll give back the stake amount plus a small reward
+        // In a more sophisticated system, you'd track total staked and calculate based on that
+        let reward_percentage = 5; // 5% reward rate
+        let days_staked = (tx_context::epoch_timestamp_ms(ctx) - stake.staked_at) / (1000 * 60 * 60 * 24);
+        let days_staked_u64 = if (days_staked > 365) { 365 } else { days_staked };
+        
+        // Calculate reward: stake_amount * reward_rate * days / 365
+        let reward_amount = (stake_amount * reward_percentage * days_staked_u64) / (100 * 365);
+        
+        // Ensure we have enough in the pool (at least the stake amount)
+        let total_withdrawal = stake_amount + reward_amount;
+        assert!(pool_balance >= total_withdrawal, E_INSUFFICIENT_REWARDS);
+        
+        // Withdraw from pool - we need to extract the balance, convert to coin, split, and return remainder
+        // Since we can't directly withdraw from a mutable reference, we'll use a workaround:
+        // Extract all, use what we need, return the rest
+        let extracted_balance = balance::withdraw(&mut dataset.producer_reward_pool, total_withdrawal);
+        let withdrawal_coin = coin::from_balance(extracted_balance, ctx);
+        
+        // Transfer withdrawal to staker
+        transfer::public_transfer(withdrawal_coin, staker);
+        
+        // Delete the stake object
+        let DatasetStake { id, dataset_id: _, staker: _, amount: _, staked_at: _ } = stake;
+        sui::object::delete(id);
+        
+        // Emit event
+        event::emit(Dataset_Unstaked {
+            dataset_id: sui::object::id(dataset),
+            staker,
+            amount: stake_amount,
+            reward: reward_amount,
+        });
+    }
 
