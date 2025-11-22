@@ -635,11 +635,15 @@ module trixxy::data_marketplace {
         let total_withdrawal = stake_amount + reward_amount;
         assert!(pool_balance >= total_withdrawal, E_INSUFFICIENT_REWARDS);
         
-        // Withdraw from pool - we need to extract the balance, convert to coin, split, and return remainder
-        // Since we can't directly withdraw from a mutable reference, we'll use a workaround:
-        // Extract all, use what we need, return the rest
-        let extracted_balance = balance::withdraw(&mut dataset.producer_reward_pool, total_withdrawal);
-        let withdrawal_coin = coin::from_balance(extracted_balance, ctx);
+        // Withdraw from pool - temporarily move balance out, convert to coin, split, and return remainder
+        // We need to move the balance out of the struct temporarily
+        let pool_balance = dataset.producer_reward_pool;
+        let mut total_coin = coin::from_balance(pool_balance, ctx);
+        let withdrawal_coin = coin::split(&mut total_coin, total_withdrawal, ctx);
+        let remainder_balance = coin::into_balance(total_coin);
+        
+        // Update the pool with remainder
+        dataset.producer_reward_pool = remainder_balance;
         
         // Transfer withdrawal to staker
         transfer::public_transfer(withdrawal_coin, staker);

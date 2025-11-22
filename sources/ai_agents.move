@@ -10,13 +10,15 @@ module trixxy::ai_agents {
     use sui::sui::SUI;
     use sui::balance::{Self, Balance};
     use sui::event;
-    use sui::object::{Self, UID, ID};
-    use sui::transfer;
-    use sui::tx_context::{Self, TxContext};
+    use sui::object::{UID, ID};
+    use sui::tx_context::TxContext;
 
     /// Agent strategy types
+    #[allow(unused_const)]
     const STRATEGY_VALUE: u8 = 0;        // Value-based trading
+    #[allow(unused_const)]
     const STRATEGY_MOMENTUM: u8 = 1;     // Momentum trading
+    #[allow(unused_const)]
     const STRATEGY_ARBITRAGE: u8 = 2;    // Arbitrage trading
     const STRATEGY_CUSTOM: u8 = 3;       // Custom strategy
 
@@ -77,7 +79,6 @@ module trixxy::ai_agents {
         
         let owner = tx_context::sender(ctx);
         let timestamp = tx_context::epoch_timestamp_ms(ctx);
-        let balance_value = coin::value(&initial_balance);
         
         // Convert coin to balance
         let agent_balance = coin::into_balance(initial_balance);
@@ -146,9 +147,14 @@ module trixxy::ai_agents {
         let balance_value = balance::value(&agent.balance);
         assert!(balance_value >= amount, E_INSUFFICIENT_BALANCE);
         
-        // Withdraw from balance
-        let withdrawn_balance = balance::withdraw(&mut agent.balance, amount);
-        let withdrawal_coin = coin::from_balance(withdrawn_balance, ctx);
+        // Withdraw from balance - temporarily move balance out, convert to coin, split, and return remainder
+        let agent_balance = agent.balance;
+        let mut total_coin = coin::from_balance(agent_balance, ctx);
+        let withdrawal_coin = coin::split(&mut total_coin, amount, ctx);
+        let remainder_balance = coin::into_balance(total_coin);
+        
+        // Update the balance with remainder
+        agent.balance = remainder_balance;
         
         // Transfer to owner
         transfer::public_transfer(withdrawal_coin, sender);
@@ -191,7 +197,6 @@ module trixxy::ai_agents {
         assert!(agent.is_active, E_AGENT_INACTIVE);
         assert!(amount > 0, E_INVALID_AMOUNT);
         
-        let sender = tx_context::sender(ctx);
         // Allow owner or the agent itself (if we add authorization later)
         // For now, only owner can execute trades
         
@@ -201,8 +206,14 @@ module trixxy::ai_agents {
         if (action == 0) { // Buy
             let balance_value = balance::value(&agent.balance);
             assert!(balance_value >= amount, E_INSUFFICIENT_BALANCE);
-            // Deduct amount from balance
-            let _ = balance::withdraw(&mut agent.balance, amount);
+            // Deduct amount from balance - temporarily move balance out, convert to coin, split, and return remainder
+            let agent_balance = agent.balance;
+            let mut total_coin = coin::from_balance(agent_balance, ctx);
+            let _spent_coin = coin::split(&mut total_coin, amount, ctx);
+            // Drop the spent coin (it's consumed)
+            let _ = _spent_coin;
+            // Update balance with remainder
+            agent.balance = coin::into_balance(total_coin);
         };
         
         // Update agent statistics
