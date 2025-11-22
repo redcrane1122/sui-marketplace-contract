@@ -33,6 +33,15 @@ module trixxy::data_marketplace {
         max_accesses: Option<u64>, // None for unlimited
     }
 
+    /// Dataset Stake - represents a staking position on a dataset
+    public struct DatasetStake has key, store {
+        id: UID,
+        dataset_id: ID,
+        staker: address,
+        amount: u64,
+        staked_at: u64,
+    }
+
     /// Dataset NFT - represents ownership and metadata of a dataset
     public struct DatasetNFT has key, store {
         id: UID,
@@ -103,6 +112,12 @@ module trixxy::data_marketplace {
         platform_amount: u64,
     }
 
+    public struct Dataset_Staked has copy, drop {
+        dataset_id: ID,
+        staker: address,
+        amount: u64,
+    }
+
     /// Error codes
     const E_INVALID_TITLE: u64 = 0;
     const E_INVALID_CATEGORY: u64 = 1;
@@ -116,6 +131,7 @@ module trixxy::data_marketplace {
     const E_INVALID_ROYALTY: u64 = 9;
     #[allow(unused_const)]
     const E_MARKETPLACE_NOT_INITIALIZED: u64 = 10;
+    const E_INVALID_PAYMENT: u64 = 11;
 
     /// Initialize marketplace (one-time setup)
     #[allow(lint(public_entry))]
@@ -539,6 +555,45 @@ module trixxy::data_marketplace {
 
     public fun get_reward_pool_balance(dataset: &DatasetNFT): u64 {
         balance::value(&dataset.producer_reward_pool)
+    }
+
+    /// Stake SUI on a dataset to earn rewards
+    #[allow(lint(public_entry))]
+    public entry fun stake_on_dataset(
+        dataset: &mut DatasetNFT,
+        payment: Coin<SUI>,
+        ctx: &mut TxContext
+    ) {
+        assert!(dataset.is_active, E_DATASET_NOT_ACTIVE);
+        
+        let staker = tx_context::sender(ctx);
+        let stake_amount = coin::value(&payment);
+        assert!(stake_amount > 0, E_INVALID_PAYMENT);
+        
+        let timestamp = tx_context::epoch_timestamp_ms(ctx);
+        
+        // Create stake record
+        let stake = DatasetStake {
+            id: sui::object::new(ctx),
+            dataset_id: sui::object::id(dataset),
+            staker,
+            amount: stake_amount,
+            staked_at: timestamp,
+        };
+        
+        // Add stake amount to producer reward pool
+        let payment_balance = coin::into_balance(payment);
+        balance::join(&mut dataset.producer_reward_pool, payment_balance);
+        
+        // Transfer stake record to staker
+        transfer::transfer(stake, staker);
+        
+        // Emit event
+        event::emit(Dataset_Staked {
+            dataset_id: sui::object::id(dataset),
+            staker,
+            amount: stake_amount,
+        });
     }
 }
 
